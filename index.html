@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Qeat.exe | PROTOCOL X: COMPLETE</title>
+    <style>
+        :root { --main: #00ff88; --bg: #000800; --panel: rgba(0, 15, 0, 0.98); --danger: #ff3333; --warn: #ffcc00; --text: #aaffaa; }
+        * { box-sizing: border-box; scroll-behavior: smooth; }
+        body { margin: 0; background: #000; color: var(--text); font-family: 'Courier New', Courier, monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+        
+        #game-container { width: 99vw; height: 98vh; max-width: 1400px; border: 3px solid var(--main); background: var(--panel); display: flex; flex-direction: column; position: relative; box-shadow: 0 0 100px rgba(0,255,136,0.3); }
+        
+        /* DURUM PANELİ */
+        #header { display: grid; grid-template-columns: repeat(6, 1fr); background: #000; border-bottom: 2px solid var(--main); padding: 15px; font-weight: bold; font-size: 13px; color: var(--main); }
+        .stat-item { border-right: 1px solid #004400; padding: 0 10px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+        
+        #main-layout { flex: 1; display: flex; overflow: hidden; }
+        #narrative-engine { flex: 2.5; padding: 40px; overflow-y: auto; border-right: 1px solid #004400; background: linear-gradient(rgba(0,10,0,0.9), rgba(0,0,0,1)); }
+        #interface-side { flex: 1; display: flex; flex-direction: column; background: #000; padding: 20px; }
+
+        /* METİN TASARIMI */
+        .para { margin-bottom: 25px; line-height: 1.8; font-size: 17px; animation: fadeIn 0.8s; }
+        .thought { font-style: italic; color: #668866; display: block; margin: 15px 0; border-left: 3px solid #004400; padding-left: 15px; }
+        .hl { color: #fff; text-shadow: 0 0 8px var(--main); font-weight: bold; }
+        .system-msg { color: var(--warn); border: 1px dashed var(--warn); padding: 10px; margin: 10px 0; font-size: 14px; }
+
+        /* AKILLI SAAT ARAYÜZÜ */
+        #watch-ui { flex: 1; border: 2px solid #004400; border-radius: 25px; padding: 20px; display: flex; flex-direction: column; background: radial-gradient(circle, #001f00 0%, #000000 100%); box-shadow: inset 0 0 20px #000; }
+        #map-display { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 15px 0; }
+        .node { border: 1px solid #111; font-size: 9px; height: 45px; display: flex; align-items: center; justify-content: center; text-align: center; color: #222; transition: 0.3s; }
+        .node.active { background: var(--main); color: #000 !important; font-weight: bold; box-shadow: 0 0 15px var(--main); }
+        .node.discovered { border-color: var(--main); color: var(--main); }
+
+        /* KONTROLLER */
+        #actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        button { background: #001100; border: 1px solid var(--main); color: var(--main); padding: 16px; cursor: pointer; font-family: inherit; font-size: 14px; transition: 0.3s; text-transform: uppercase; }
+        button:hover { background: var(--main); color: #000; font-weight: bold; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        #inv-box { font-size: 12px; margin-top: 15px; color: var(--main); }
+        .inv-item { display: inline-block; background: #002200; padding: 4px 10px; margin: 3px; border: 1px solid var(--main); border-radius: 4px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="header">
+        <div class="stat-item">DENEY<br><span id="id-disp">09-FINAL</span></div>
+        <div class="stat-item">HAYATİ<br><span id="hp-disp">100</span>%</div>
+        <div class="stat-item">ENERJİ<br><span id="en-disp">100</span>%</div>
+        <div class="stat-item">RADYASYON<br><span id="rad-disp">0</span> mSv</div>
+        <div class="stat-item">ZAMAN<br><span id="time-disp">120:00</span></div>
+        <div class="stat-item">KONUM<br><span id="loc-disp">BAŞLIYOR...</span></div>
+    </div>
+
+    <div id="main-layout">
+        <div id="narrative-engine">
+            <div id="output"></div>
+        </div>
+
+        <div id="interface-side">
+            <div id="watch-ui">
+                <div style="text-align: center; font-size: 11px; color: var(--main); border-bottom: 1px solid #004400; padding-bottom: 5px;">Q-WATCH OS V.FINAL</div>
+                <div id="map-display"></div>
+                <div id="inv-box">ENVANTER: <div id="items"></div></div>
+                <div style="font-size: 11px; color: var(--warn); margin-top: auto; border-top: 1px solid #004400; padding-top: 5px;">HEDEF: <span id="objective">Hayatta Kal.</span></div>
+            </div>
+            <div id="actions"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- GLOBAL OYUN DURUMU ---
+const GAME = {
+    hp: 100, en: 100, rad: 0, time: 120,
+    loc: "Hücre", inv: [], discovered: ["Hücre"],
+    flags: { codeFound: 0, identityLearned: false, masterKey: false, ventOpen: false, doorPower: false },
+    rooms: [
+        "Hücre", "Koridor A", "Mutfak", "Revir", 
+        "Laboratuvar", "Arşiv", "Güvenlik", "Atölye", 
+        "Asansör", "Reaktör", "Klinik", "Yüzey Kapısı"
+    ]
+};
+
+// --- DEVASA METİN VERİTABANI ---
+const DATA = {
+    "Hücre": {
+        desc: `Karanlık... Zihnindeki ilk kelime buydu. Göz kapakların tonlarca ağırlıktaymış gibi yavaşça aralandı. <span class='hl'>Hücre</span> duvarlarından sızan soğuk, kemiklerine kadar işliyordu. Tavandaki tek floresan lamba, can çekişen bir elektrik devresi gibi titreyerek odayı anlık beyaz ışıklara boğuyordu. Duvarlarda derin tırnak izleri ve anlamsız formüller kazınmış. <br><br>Bileğindeki <span class='hl'>Q-Watch</span> saati hafifçe titreyerek bileğini acıttı. Ekranda 'SİSTEM UYANDI' yazısı yanıp sönüyor. Bu hücre senin sadece başlangıcın mı, yoksa sonun mu? Kapı mühürlü, hava ise pas kokuyor.`,
+        thought: "Neredeyim? Bu formüller... Onları ben mi yazdım?",
+        btn: [
+            { t: "Hücreyi Detaylıca Ara (15dk)", f: "search_cell" },
+            { t: "Mühürlü Kapıyı İncele (5dk)", f: "examine_door" },
+            { t: "Havalandırma Izgarasına Bak (10dk)", f: "check_vent" }
+        ]
+    },
+    "Koridor A": {
+        desc: `Havalandırmadan aşağı, soğuk metal zemine düştün. <span class='hl'>Koridor A</span>, tesisin ana damarı gibi her iki yöne doğru uzanıyor. Kırmızı acil durum ışıkları, zemindeki toz bulutlarını ve duvarlardaki kurşun izlerini aydınlatıyor. Burası bir hapishane değil, bir savaş alanıymış gibi görünüyor. <br><br>Hoparlörlerden gelen boğuk bir cızırtı, sanki birinin çok uzaktan yardım çığlığı atmasına benziyor. Hava burada daha taze ama hala kimyasal bir koku var.`,
+        thought: "Sessizlik... Bu sessizlik normal değil. Kameralar hala beni izliyor mu?",
+        btn: [
+            { t: "Sol: Mutfak ve Yaşam Alanı", n: "Mutfak" },
+            { t: "Sağ: Laboratuvar Kompleksi", n: "Laboratuvar" },
+            { t: "Zemini İncele (Ayak İzleri)", f: "check_floor" }
+        ]
+    },
+    "Mutfak": {
+        desc: `Mutfağa girdiğinde mide bulandırıcı bir koku seni karşıladı. Buzdolapları çoktan bozulmuş, içindekiler tanımlanamaz bir balçığa dönüşmüş. Tezgahların üzerinde yarım kalmış kahve fincanları ve kurumuş ekmek kırıntıları var. <br><br>Sanki insanlar bir saniye içinde her şeyi bırakıp gitmişler. Köşedeki otomat, düşük voltajla titreyerek hala ışık veriyor.`,
+        thought: "Burada neler oldu? İnsanlar nereye gitti?",
+        btn: [
+            { t: "Dolapları Karıştır (Yiyecek Ara)", f: "search_kitchen" },
+            { t: "Otomata Sertçe Vur", f: "hit_vending" },
+            { t: "Koridor A'ya Dön", n: "Koridor A" }
+        ]
+    },
+    "Laboratuvar": {
+        desc: `Burası insanlığın bittiği yer olmalı. Devasa cam tüplerin içinde, genetiğiyle oynanmış, yarı insan yarı makine yaratıklar asılı duruyor. Bazıları hala sıvı içinde, bazıları ise kırılmış tüplerden dışarı sarkmış. <br><br>Ana terminal masmavi bir ışıkla tüm odayı aydınlatıyor. Ekranda 'DENEY 09: BİLİNÇ AKTARIMI %98' yazısı takılı kalmış.`,
+        thought: "Tüpteki o yüz... Benim yüzüme ne kadar çok benziyor.",
+        btn: [
+            { t: "Terminali Hackle (20dk)", f: "hack_terminal" },
+            { t: "Tüpleri İncele", f: "examine_tubes" },
+            { t: "Arşiv Odasına Geç", n: "Arşiv" }
+        ]
+    },
+    "Arşiv": {
+        desc: `Tozlu raflar ve binlerce döküman. Tesisin tüm karanlık sırları burada saklı. Hava o kadar ağır ki her nefeste ciğerlerinin tozla dolduğunu hissediyorsun. <br><br>Bir rafın en altında, 'Qeat' projesine ait gizli bir dosya duruyor. Üzerindeki tarih, senin uyanışından çok öncesini gösteriyor.`,
+        thought: "Geçmişim bu kağıt parçalarında mı saklı?",
+        btn: [
+            { t: "Kendi Dosyanı Oku (30dk)", f: "read_archive" },
+            { t: "Gizli Bölmeleri Ara", f: "search_secret" },
+            { t: "Laboratuvara Dön", n: "Laboratuvar" }
+        ]
+    },
+    "Yüzey Kapısı": {
+        desc: `Yolun sonu. Devasa, zırhlı bir kapı. Üzerinde 4 haneli bir şifre paneli yanıp sönüyor. Bu kapının ardında özgürlük mü var yoksa daha büyük bir yıkım mı? <br><br>Hava burada daha soğuk, kapının altından sızan gerçek rüzgarın sesini duyabiliyorsun.`,
+        thought: "Şifreyi biliyor muyum? 73... ve gerisi neydi?",
+        btn: [
+            { t: "Şifreyi Gir: 7351", f: "end_good" },
+            { t: "Kapıyı Levyeyle Zorla", f: "end_bad" },
+            { t: "Koridora Geri Dön", n: "Koridor A" }
+        ]
+    }
+};
+
+// --- FONKSİYONEL MANTIK ---
+
+function updateUI() {
+    document.getElementById("hp-disp").innerText = GAME.hp;
+    document.getElementById("en-disp").innerText = GAME.en;
+    document.getElementById("rad-disp").innerText = GAME.rad;
+    document.getElementById("time-disp").innerText = `${GAME.time}:00`;
+    document.getElementById("loc-disp").innerText = GAME.loc.toUpperCase();
+    
+    // Envanter Görünümü
+    const invDiv = document.getElementById("items");
+    invDiv.innerHTML = GAME.inv.length ? GAME.inv.map(i => `<span class='inv-item'>${i}</span>`).join("") : "BOŞ";
+    
+    // Harita Görünümü
+    const mapDiv = document.getElementById("map-display");
+    mapDiv.innerHTML = "";
+    GAME.rooms.forEach(r => {
+        const node = document.createElement("div");
+        node.className = `node ${GAME.loc === r ? 'active' : ''} ${GAME.discovered.includes(r) ? 'discovered' : ''}`;
+        node.innerText = GAME.discovered.includes(r) ? r.substring(0,5) : "??";
+        mapDiv.appendChild(node);
+    });
+
+    if(GAME.hp <= 0) endGame("HAYATİ SİNYAL KESİLDİ. ÖLDÜN.");
+    if(GAME.time <= 0) endGame("ZAMAN TÜKENDİ. SİSTEM KENDİNİ İMHA ETTİ.");
+}
+
+function writeOutput(text, thought) {
+    const out = document.getElementById("output");
+    out.innerHTML = `<div class='para'>${text}</div><div class='thought'>${thought}</div>`;
+    out.scrollTop = 0;
+}
+
+function changeScene(room) {
+    GAME.loc = room;
+    if(!GAME.discovered.includes(room)) GAME.discovered.push(room);
+    writeOutput(DATA[room].desc, DATA[room].thought);
+    renderButtons(DATA[room].btn);
+    updateUI();
+}
+
+function renderButtons(btns) {
+    const actionBox = document.getElementById("actions");
+    actionBox.innerHTML = "";
+    btns.forEach(b => {
+        const btn = document.createElement("button");
+        btn.innerText = b.t;
+        btn.onclick = () => {
+            if(b.n) {
+                GAME.time -= 5;
+                changeScene(b.n);
+            } else if(b.f) {
+                handleAction(b.f);
+            }
+            updateUI();
+        };
+        actionBox.appendChild(btn);
+    });
+}
+
+// --- ÖZEL AKSİYONLARIN YÖNETİMİ ---
+function handleAction(action) {
+    switch(action) {
+        case "search_cell":
+            writeOutput("Yatağın altındaki soğuk betonu kazırken, bir çatlağın arasına gizlenmiş eski bir <span class='hl'>Ses Kayıt Cihazı</span> buldun. Titreyen bir ses: '...Protokol aktif. Kodun başı yetmiş üç...' diyor.", "73... Bunu aklımda tutmalıyım.");
+            GAME.flags.codeFound++;
+            GAME.time -= 15;
+            GAME.inv.push("Ses Kaydı");
+            break;
+            
+        case "examine_door":
+            writeOutput("Kapı, dışarıdan manyetik bir kilitle mühürlenmiş. Üzerinde 'DENEY 09 - ÇIKIŞ YASAK' yazılı bir levha var. Güç kabloları kesilmiş, bu kapı buradan açılmaz.", "Başka bir yol bulmalıyım. Belki havalandırma?");
+            GAME.time -= 5;
+            break;
+
+        case "check_vent":
+            writeOutput("Havalandırma ızgarası paslanmış ama vidaları gevşek. Tüm gücünle asıldığında büyük bir gürültüyle açıldı. İçerisi zifiri karanlık.", "Buradan dışarı sızabilirim.");
+            GAME.flags.ventOpen = true;
+            // Yeni buton ekle
+            const vBtn = document.createElement("button");
+            vBtn.innerText = "Tünele Gir (Koridor A)";
+            vBtn.onclick = () => changeScene("Koridor A");
+            document.getElementById("actions").appendChild(vBtn);
+            break;
+
+        case "search_kitchen":
+            writeOutput("Dolapların arasında mühürlü bir rasyon paketi buldun. Tadı metalik ama enerjini geri kazandırıyor.", "Yemek yemek biraz olsun iyi geldi.");
+            GAME.en = Math.min(100, GAME.en + 30);
+            GAME.time -= 10;
+            break;
+
+        case "hack_terminal":
+            if(GAME.en < 20) {
+                writeOutput("Çok yorgunsun, terminalin karmaşık kodlarını çözemiyorsun.", "Biraz enerjiye ihtiyacım var.");
+            } else {
+                writeOutput("Parmakların klavyede uçuyor. Sistemin derinliklerine sızdın ve şifrenin son iki hanesini buldun: <span class='hl'>51</span>. Ancak sistem alarm verdi!", "7351... Kod tamamlandı!");
+                GAME.flags.codeFound++;
+                GAME.en -= 20;
+                GAME.hp -= 5;
+            }
+            break;
+
+        case "read_archive":
+            writeOutput("Dosyayı okudukça ellerin titremeye başladı. Sen bir insan değilsin. Sen, tesisin ana bilgisayarına yüklenmiş bir bilincin, sentetik bir bedendeki yansımasısın.", "Ben... Ben sadece bir yazılım mıyım?");
+            GAME.flags.identityLearned = true;
+            GAME.time -= 30;
+            break;
+
+        case "end_good":
+            if(GAME.flags.codeFound >= 2) {
+                endGame("GERÇEK SON: Kapı tıslayarak açıldı. Karşında uçsuz bucaksız, karlı bir ova ve özgürlük var. Artık kimsenin deneği değilsin.");
+            } else {
+                writeOutput("Yanlış şifre! Kapı kilitlendi ve odaya gaz dolmaya başladı!", "HAYIR!");
+                GAME.hp -= 40;
+            }
+            break;
+
+        case "end_bad":
+            endGame("BAŞARISIZ SON: Kapıyı levye ile zorlarken alarm çaldı. Robotik muhafızlar seni köşeye sıkıştırdı. Bu döngü burada biter.");
+            break;
+    }
+}
+
+function endGame(msg) {
+    document.body.innerHTML = `<div style='text-align:center; color:var(--main); padding:100px; background:#000; height:100vh;'><h1>${msg}</h1><br><button onclick='location.reload()' style='width:300px'>SİSTEMİ YENİDEN BAŞLAT</button></div>`;
+}
+
+// OYUNU BAŞLAT
+changeScene("Hücre");
+</script>
+</body>
+</html>
